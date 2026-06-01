@@ -1,0 +1,9 @@
+# Java / Maven
+target/
+*.class
+*.log
+
+# SQLite (banco local)
+data/*.db
+data/*.sqlite
+data/*.sqlite3
