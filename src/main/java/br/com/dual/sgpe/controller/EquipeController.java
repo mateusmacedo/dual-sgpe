@@ -2,12 +2,16 @@ package br.com.dual.sgpe.controller;
 
 import br.com.dual.sgpe.dao.EquipeDao;
 import br.com.dual.sgpe.dao.EquipeUsuarioDao;
+import br.com.dual.sgpe.dao.ProjetoEquipeDao;
 import br.com.dual.sgpe.dao.UsuarioDao;
+import br.com.dual.sgpe.security.EscopoColaborador;
 import br.com.dual.sgpe.exception.ExclusaoBloqueadaException;
 import br.com.dual.sgpe.exception.RegistroDuplicadoException;
 import br.com.dual.sgpe.exception.ValidacaoException;
 import br.com.dual.sgpe.model.entity.Equipe;
 import br.com.dual.sgpe.model.entity.Usuario;
+import br.com.dual.sgpe.model.enums.PerfilUsuario;
+import java.util.Set;
 import br.com.dual.sgpe.util.ValidationUtils;
 import java.util.List;
 import java.util.Optional;
@@ -23,12 +27,17 @@ public class EquipeController {
     private final EquipeDao equipeDao;
     private final EquipeUsuarioDao equipeUsuarioDao;
     private final UsuarioDao usuarioDao;
+    private final ProjetoEquipeDao projetoEquipeDao;
+    private final EscopoColaborador escopo;
 
     public EquipeController(EquipeDao equipeDao, EquipeUsuarioDao equipeUsuarioDao,
-                            UsuarioDao usuarioDao) {
+                            UsuarioDao usuarioDao, ProjetoEquipeDao projetoEquipeDao,
+                            EscopoColaborador escopo) {
         this.equipeDao = equipeDao;
         this.equipeUsuarioDao = equipeUsuarioDao;
         this.usuarioDao = usuarioDao;
+        this.projetoEquipeDao = projetoEquipeDao;
+        this.escopo = escopo;
     }
 
     /**
@@ -61,6 +70,17 @@ public class EquipeController {
     }
 
     /**
+     * Atualiza a equipe verificando se o solicitante tem acesso ao seu escopo.
+     */
+    public Equipe atualizar(Equipe equipe, Usuario solicitante) {
+        if (equipe == null || equipe.getId() == null) {
+            throw new ValidacaoException("Equipe sem id não pode ser atualizada.");
+        }
+        verificarEscopo(solicitante, equipe.getId());
+        return atualizar(equipe);
+    }
+
+    /**
      * Remove a equipe somente se não houver projetos vinculados. Remove primeiro
      * todos os membros da equipe (tabela intermediária) antes de excluir o registro.
      *
@@ -77,17 +97,35 @@ public class EquipeController {
     }
 
     /**
+     * Exclui a equipe verificando se o solicitante tem acesso ao seu escopo.
+     */
+    public void excluir(int id, Usuario solicitante) {
+        verificarEscopo(solicitante, id);
+        excluir(id);
+    }
+
+    /**
      * Vincula um usuário a uma equipe, verificando a existência do usuário e
-     * a ausência de vínculo duplicado antes de persistir.
+     * a ausência de vínculo duplicado antes de persistir. Impede que o solicitante
+     * adicione um usuário de perfil superior ao seu (hierarquia de perfis).
      *
-     * @param equipeId  id da equipe
-     * @param usuarioId id do usuário a adicionar
-     * @throws ValidacaoException         se o usuário não for encontrado
+     * @param equipeId    id da equipe
+     * @param usuarioId   id do usuário a adicionar
+     * @param solicitante perfil do usuário que dispara a operação
+     * @throws ValidacaoException         se o usuário não for encontrado ou se o
+     *                                    solicitante não puder gerenciar seu perfil
      * @throws RegistroDuplicadoException se o usuário já for membro da equipe
      */
-    public void adicionarMembro(int equipeId, int usuarioId) {
-        if (usuarioDao.buscarPorId(usuarioId).isEmpty()) {
-            throw new ValidacaoException("Usuário não encontrado.");
+    public void adicionarMembro(int equipeId, int usuarioId, PerfilUsuario solicitante) {
+        Usuario usuario = usuarioDao.buscarPorId(usuarioId)
+            .orElseThrow(() -> new ValidacaoException("Usuário não encontrado."));
+        if (!usuario.getPerfil().isDesignavel()) {
+            throw new ValidacaoException(
+                "Administrador não pode ser adicionado como membro de equipe.");
+        }
+        if (!solicitante.podeGerenciar(usuario.getPerfil())) {
+            throw new ValidacaoException(
+                "Sem permissão para adicionar à equipe um usuário de perfil superior.");
         }
         if (equipeUsuarioDao.existeVinculo(equipeId, usuarioId)) {
             throw new RegistroDuplicadoException("Usuário já é membro desta equipe.");
@@ -95,8 +133,24 @@ public class EquipeController {
         equipeUsuarioDao.vincular(equipeId, usuarioId);
     }
 
+    /**
+     * Adiciona membro verificando escopo do solicitante sobre a equipe.
+     */
+    public void adicionarMembro(int equipeId, int usuarioId, Usuario solicitante) {
+        verificarEscopo(solicitante, equipeId);
+        adicionarMembro(equipeId, usuarioId, solicitante.getPerfil());
+    }
+
     public void removerMembro(int equipeId, int usuarioId) {
         equipeUsuarioDao.desvincular(equipeId, usuarioId);
+    }
+
+    /**
+     * Remove membro verificando escopo do solicitante sobre a equipe.
+     */
+    public void removerMembro(int equipeId, int usuarioId, Usuario solicitante) {
+        verificarEscopo(solicitante, equipeId);
+        removerMembro(equipeId, usuarioId);
     }
 
     /**
@@ -113,12 +167,42 @@ public class EquipeController {
         return equipeDao.listarTodos();
     }
 
-    public List<Usuario> listarUsuarios() {
-        return usuarioDao.listarTodos();
+    /**
+     * Lista os usuários que o solicitante pode adicionar a uma equipe,
+     * filtrando aqueles cujo perfil seja superior ao do solicitante (hierarquia).
+     *
+     * @param solicitante perfil do usuário que dispara a consulta
+     * @return usuários cujo perfil o solicitante pode gerenciar
+     */
+    public List<Usuario> listarUsuarios(PerfilUsuario solicitante) {
+        return usuarioDao.listarTodos().stream()
+            .filter(usuario -> usuario.getPerfil().isDesignavel())
+            .filter(usuario -> solicitante.podeGerenciar(usuario.getPerfil()))
+            .toList();
     }
 
     public Optional<Equipe> buscarPorId(int id) {
         return equipeDao.buscarPorId(id);
+    }
+
+    /**
+     * Verifica se o solicitante tem acesso à equipe. Administradores acessam
+     * todas; gerentes e colaboradores acessam equipes vinculadas a projetos
+     * do seu escopo.
+     */
+    public boolean equipeNoEscopo(Usuario solicitante, int equipeId) {
+        if (solicitante.getPerfil() == PerfilUsuario.ADMINISTRADOR) {
+            return true;
+        }
+        Set<Integer> projetosPermitidos = escopo.projetoIdsDoColaborador(solicitante.getId());
+        List<Integer> projetosDaEquipe = projetoEquipeDao.listarProjetoIds(equipeId);
+        return projetosDaEquipe.stream().anyMatch(projetosPermitidos::contains);
+    }
+
+    private void verificarEscopo(Usuario solicitante, int equipeId) {
+        if (!equipeNoEscopo(solicitante, equipeId)) {
+            throw new ValidacaoException("Sem permissão para alterar esta equipe.");
+        }
     }
 
     private void validar(Equipe equipe) {

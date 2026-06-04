@@ -237,6 +237,18 @@ public class UsuarioDao {
     }
 
     /**
+     * Verifica se já existe usuário com o e-mail informado (para validação de unicidade
+     * no cadastro).
+     *
+     * @param email e-mail a verificar
+     * @return {@code true} se o e-mail já estiver em uso
+     * @throws PersistenciaException em falha de SQL
+     */
+    public boolean existsByEmail(String email) {
+        return contar("SELECT COUNT(*) FROM usuarios WHERE email = ?", email) > 0;
+    }
+
+    /**
      * Verifica se o login já está em uso por outro usuário (excluindo o próprio
      * usuário em edição). Usado na validação de unicidade ao atualizar cadastro.
      *
@@ -260,6 +272,19 @@ public class UsuarioDao {
      */
     public boolean existsByCpfExcetoId(String cpf, int id) {
         return contar("SELECT COUNT(*) FROM usuarios WHERE cpf = ? AND id <> ?", cpf, id) > 0;
+    }
+
+    /**
+     * Verifica se o e-mail já está em uso por outro usuário (excluindo o próprio
+     * usuário em edição). Usado na validação de unicidade ao atualizar cadastro.
+     *
+     * @param email e-mail a verificar
+     * @param id    id do usuário que deve ser ignorado na contagem
+     * @return {@code true} se outro usuário já possuir esse e-mail
+     * @throws PersistenciaException em falha de SQL
+     */
+    public boolean existsByEmailExcetoId(String email, int id) {
+        return contar("SELECT COUNT(*) FROM usuarios WHERE email = ? AND id <> ?", email, id) > 0;
     }
 
     /**

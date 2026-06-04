@@ -1,11 +1,14 @@
 package br.com.dual.sgpe.view;
 
 import br.com.dual.sgpe.controller.ProjetoController;
+import br.com.dual.sgpe.controller.TarefaController;
 import br.com.dual.sgpe.exception.ExclusaoBloqueadaException;
 import br.com.dual.sgpe.exception.RegistroDuplicadoException;
 import br.com.dual.sgpe.exception.ValidacaoException;
 import br.com.dual.sgpe.model.entity.Equipe;
 import br.com.dual.sgpe.model.entity.Projeto;
+import br.com.dual.sgpe.model.entity.Tarefa;
+import br.com.dual.sgpe.model.entity.Usuario;
 import br.com.dual.sgpe.model.enums.StatusProjeto;
 import br.com.dual.sgpe.util.DateUtils;
 import java.awt.BorderLayout;
@@ -14,7 +17,9 @@ import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.swing.DefaultComboBoxModel;
@@ -29,9 +34,11 @@ import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -45,6 +52,7 @@ public class ProjetoView extends JFrame {
     private static final String FILTRO_TODOS = "Todos";
 
     private final transient ProjetoController controller;
+    private final transient TarefaController tarefaController;
 
     private final JTextField campoNome = new JTextField(24);
     private final JTextField campoDescricao = new JTextField(24);
@@ -60,17 +68,28 @@ public class ProjetoView extends JFrame {
         new Object[] {"ID", "Nome", "Descrição", "Início", "Término", "Status"});
     private final JTable tabela = new JTable(tableModel);
 
+    // Tabela somente-leitura das tarefas do projeto selecionado.
+    private final DefaultTableModel tarefasModel = SwingUtils.modeloSomenteLeitura(
+        new Object[] {"ID", "Título", "Responsável", "Início", "Término", "Status"});
+    private final JTable tabelaTarefas = new JTable(tarefasModel);
+
     private Integer projetoSelecionadoId;
 
     /**
-     * Inicializa a tela com o controller de projetos, monta os componentes Swing
-     * e carrega a listagem inicial na tabela.
+     * Inicializa a tela com os controllers de projeto e tarefa, monta os
+     * componentes Swing e carrega a listagem inicial na tabela.
      *
-     * @param controller fornece as operações de CRUD e vínculo de equipes ao projeto
+     * @param controller        fornece as operações de CRUD e vínculo de equipes ao projeto
+     * @param tarefaController   fornece as tarefas vinculadas ao projeto selecionado
      */
-    public ProjetoView(ProjetoController controller) {
+    private final transient Usuario usuarioSessao;
+
+    public ProjetoView(ProjetoController controller, TarefaController tarefaController,
+                       Usuario usuarioSessao) {
         super("Cadastro de Projetos — SGPE");
         this.controller = controller;
+        this.tarefaController = tarefaController;
+        this.usuarioSessao = usuarioSessao;
         configurarJanela();
         recarregarTabela();
     }
@@ -108,6 +127,7 @@ public class ProjetoView extends JFrame {
 
         SwingUtils.aplicarFonte(conteudo, SwingUtils.FONTE_BASE);
         SwingUtils.configurarTabela(tabela, SwingUtils.FONTE_BASE);
+        SwingUtils.configurarTabela(tabelaTarefas, SwingUtils.FONTE_BASE);
     }
 
     /**
@@ -157,8 +177,17 @@ public class ProjetoView extends JFrame {
         filtroStatus.addActionListener(evento -> recarregarTabela());
         barraFiltro.add(filtroStatus);
 
+        // Painel inferior com a tabela de tarefas do projeto selecionado.
+        JScrollPane painelTarefas = new JScrollPane(tabelaTarefas);
+        painelTarefas.setBorder(new TitledBorder("Tarefas do projeto selecionado"));
+
+        // Split vertical: projetos em cima, tarefas do projeto selecionado embaixo.
+        JSplitPane divisor = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+            new JScrollPane(tabela), painelTarefas);
+        divisor.setResizeWeight(0.6);
+
         painel.add(barraFiltro, BorderLayout.NORTH);
-        painel.add(new JScrollPane(tabela), BorderLayout.CENTER);
+        painel.add(divisor, BorderLayout.CENTER);
         return painel;
     }
 
@@ -187,7 +216,7 @@ public class ProjetoView extends JFrame {
                 SwingUtils.exibirInformacao(this, "Projeto cadastrado com sucesso.");
             } else {
                 projeto.setId(projetoSelecionadoId);
-                controller.atualizar(projeto);
+                controller.atualizar(projeto, usuarioSessao);
                 SwingUtils.exibirInformacao(this, "Projeto atualizado com sucesso.");
             }
             limparFormulario();
@@ -209,7 +238,7 @@ public class ProjetoView extends JFrame {
             return;
         }
         try {
-            controller.excluir(projetoSelecionadoId);
+            controller.excluir(projetoSelecionadoId, usuarioSessao);
             SwingUtils.exibirInformacao(this, "Projeto excluído com sucesso.");
             limparFormulario();
             recarregarTabela();
@@ -241,7 +270,34 @@ public class ProjetoView extends JFrame {
             campoDataInicio.setText(DateUtils.format(projeto.getDataInicio()));
             campoDataTermino.setText(DateUtils.format(projeto.getDataTerminoPrevista()));
             campoStatus.setSelectedItem(projeto.getStatus());
+            recarregarTarefasDoProjeto(projeto.getId());
         });
+    }
+
+    /**
+     * Preenche a tabela inferior com as tarefas vinculadas ao projeto informado,
+     * obtidas via {@code tarefaController.findByProjetoId}. Os nomes dos
+     * responsáveis são resolvidos por um mapa id&rarr;nome construído a partir de
+     * {@code tarefaController.listarResponsaveis()}, evitando varredura por linha.
+     *
+     * @param projetoId id do projeto cujas tarefas serão listadas
+     */
+    private void recarregarTarefasDoProjeto(int projetoId) {
+        tarefasModel.setRowCount(0);
+        Map<Integer, String> nomesResponsaveis = new HashMap<>();
+        for (Usuario usuario : tarefaController.listarResponsaveis()) {
+            nomesResponsaveis.put(usuario.getId(), usuario.getNomeCompleto());
+        }
+        for (Tarefa tarefa : tarefaController.findByProjetoId(projetoId)) {
+            tarefasModel.addRow(new Object[] {
+                tarefa.getId(),
+                tarefa.getTitulo(),
+                nomesResponsaveis.getOrDefault(tarefa.getResponsavelId(), "?"),
+                DateUtils.format(tarefa.getDataInicio()),
+                DateUtils.format(tarefa.getDataTerminoPrevista()),
+                tarefa.getStatus()
+            });
+        }
     }
 
     private void recarregarTabela() {
@@ -333,7 +389,7 @@ public class ProjetoView extends JFrame {
                 return;
             }
             try {
-                controller.vincularEquipe(projetoSelecionadoId, selecionada.getId());
+                controller.vincularEquipe(projetoSelecionadoId, selecionada.getId(), usuarioSessao);
                 recarregar.run();
             } catch (ValidacaoException | RegistroDuplicadoException ex) {
                 SwingUtils.exibirErro(this, ex.getMessage());
@@ -348,7 +404,7 @@ public class ProjetoView extends JFrame {
                 return;
             }
             int equipeId = (int) modeloEquipes.getValueAt(linha, 0);
-            controller.desvincularEquipe(projetoSelecionadoId, equipeId);
+            controller.desvincularEquipe(projetoSelecionadoId, equipeId, usuarioSessao);
             recarregar.run();
         });
 

@@ -41,7 +41,7 @@ class UsuarioControllerTest {
     }
 
     private Usuario novo(String login, String cpf) {
-        return new Usuario("João Silva", cpf, "joao@exemplo.com", "Desenvolvedor",
+        return new Usuario("João Silva", cpf, login + "@exemplo.com", "Desenvolvedor",
             login, "senha123", PerfilUsuario.COLABORADOR);
     }
 
@@ -69,6 +69,17 @@ class UsuarioControllerTest {
 
         assertThrows(RegistroDuplicadoException.class,
             () -> controller.salvar(novo("maria", CPF_VALIDO)));
+    }
+
+    @Test
+    void salvarEmailDuplicadoLancaExcecao() {
+        controller.salvar(novo("joao", CPF_VALIDO));
+
+        Usuario mesmoEmail = novo("maria", CPF_VALIDO_2);
+        mesmoEmail.setEmail("joao@exemplo.com");
+        RegistroDuplicadoException excecao = assertThrows(RegistroDuplicadoException.class,
+            () -> controller.salvar(mesmoEmail));
+        assertTrue(excecao.getMessage().toLowerCase().contains("mail"));
     }
 
     @Test

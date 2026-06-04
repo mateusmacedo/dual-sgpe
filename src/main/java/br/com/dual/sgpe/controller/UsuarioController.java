@@ -26,12 +26,12 @@ public class UsuarioController {
 
     /**
      * Valida os campos obrigatórios, normaliza o CPF para apenas dígitos e verifica
-     * unicidade de login e CPF antes de persistir o novo usuário.
+     * unicidade de login, CPF e e-mail antes de persistir o novo usuário.
      *
      * @param usuario dados do usuário a ser criado
      * @return o usuário inserido (com id preenchido pelo DAO)
      * @throws ValidacaoException         se algum campo obrigatório for inválido
-     * @throws RegistroDuplicadoException se login ou CPF já estiverem cadastrados
+     * @throws RegistroDuplicadoException se login, CPF ou e-mail já estiverem cadastrados
      */
     public Usuario salvar(Usuario usuario) {
         validar(usuario);
@@ -43,18 +43,21 @@ public class UsuarioController {
         if (usuarioDao.existsByCpf(usuario.getCpf())) {
             throw new RegistroDuplicadoException("CPF já cadastrado.");
         }
+        if (usuarioDao.existsByEmail(usuario.getEmail())) {
+            throw new RegistroDuplicadoException("E-mail já cadastrado.");
+        }
         usuarioDao.inserir(usuario);
         return usuario;
     }
 
     /**
      * Valida e persiste as alterações de um usuário existente. Verifica unicidade
-     * de login e CPF excluindo o próprio registro da comparação (queries com {@code ExcetoId}).
+     * de login, CPF e e-mail excluindo o próprio registro da comparação (queries com {@code ExcetoId}).
      *
      * @param usuario usuário com id e novos dados
      * @return o usuário atualizado
      * @throws ValidacaoException         se o usuário for nulo ou não tiver id
-     * @throws RegistroDuplicadoException se login ou CPF colidirem com outro registro
+     * @throws RegistroDuplicadoException se login, CPF ou e-mail colidirem com outro registro
      */
     public Usuario atualizar(Usuario usuario) {
         if (usuario == null || usuario.getId() == null) {
@@ -69,6 +72,9 @@ public class UsuarioController {
         }
         if (usuarioDao.existsByCpfExcetoId(usuario.getCpf(), usuario.getId())) {
             throw new RegistroDuplicadoException("CPF já cadastrado.");
+        }
+        if (usuarioDao.existsByEmailExcetoId(usuario.getEmail(), usuario.getId())) {
+            throw new RegistroDuplicadoException("E-mail já cadastrado.");
         }
         usuarioDao.atualizar(usuario);
         return usuario;

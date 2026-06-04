@@ -38,11 +38,14 @@ import javax.swing.table.DefaultTableModel;
  *
  * <p>Opera em dois modos mutuamente exclusivos definidos no construtor:
  * <ul>
- *   <li><b>Modo edição</b> (gestor): botões Salvar e Excluir habilitados;
+ *   <li><b>Modo edição</b> (gestor): botões Novo, Salvar e Excluir habilitados;
  *       tabela filtrada por projeto selecionado no combo de filtro.</li>
- *   <li><b>Modo leitura</b> (colaborador): botões Salvar e Excluir desabilitados;
- *       tabela carregada via {@code findByResponsavelId} mostrando apenas
- *       as tarefas atribuídas ao usuário em sessão.</li>
+ *   <li><b>Modo leitura</b> (colaborador): botões Novo, Salvar e Excluir e os
+ *       campos de criação/edição desabilitados. Apenas o combo de status e o
+ *       botão "Atualizar status" permanecem ativos, permitindo ao colaborador
+ *       alterar o status das próprias tarefas. A tabela é carregada via
+ *       {@code findByResponsavelId}, mostrando apenas as tarefas atribuídas ao
+ *       usuário em sessão.</li>
  * </ul>
  * Toda lógica de negócio é delegada ao {@link TarefaController}.
  */
@@ -68,7 +71,7 @@ public class TarefaView extends JFrame {
 
     // Tabela somente-leitura — edição apenas via formulário
     private final DefaultTableModel tableModel = SwingUtils.modeloSomenteLeitura(
-        new Object[] {"ID", "Título", "Responsável", "Início", "Término", "Status"});
+        new Object[] {"ID", "Título", "Projeto", "Responsável", "Início", "Término", "Status"});
     private final JTable tabela = new JTable(tableModel);
 
     /** ID da tarefa selecionada na tabela; {@code null} indica modo inserção. */
@@ -143,7 +146,7 @@ public class TarefaView extends JFrame {
         filtroProjeto.setModel(modeloFiltro);
 
         DefaultComboBoxModel<Usuario> modeloResponsavel = new DefaultComboBoxModel<>();
-        for (Usuario usuario : controller.listarResponsaveis()) {
+        for (Usuario usuario : controller.listarResponsaveis(usuarioSessao.getPerfil())) {
             modeloResponsavel.addElement(usuario);
         }
         comboResponsavel.setModel(modeloResponsavel);
@@ -202,6 +205,18 @@ public class TarefaView extends JFrame {
         adicionarLinha(painel, rotulo, campo, linha++, "Início (DD-MM-AAAA):", campoDataInicio);
         adicionarLinha(painel, rotulo, campo, linha++, "Término previsto (DD-MM-AAAA):", campoDataTermino);
         adicionarLinha(painel, rotulo, campo, linha, "Status:", campoStatus);
+
+        // Modo leitura: o colaborador não cria nem edita tarefas, então os campos de
+        // criação/edição ficam desabilitados. Apenas o status permanece editável, pois
+        // o colaborador pode atualizar o status das próprias tarefas.
+        if (modoLeitura) {
+            campoTitulo.setEnabled(false);
+            campoDescricao.setEnabled(false);
+            comboProjeto.setEnabled(false);
+            comboResponsavel.setEnabled(false);
+            campoDataInicio.setEnabled(false);
+            campoDataTermino.setEnabled(false);
+        }
         return painel;
     }
 
@@ -237,23 +252,32 @@ public class TarefaView extends JFrame {
     /**
      * Cria a barra de botões de ação.
      *
-     * <p>Em modo leitura (colaborador), Salvar e Excluir são desabilitados;
-     * o botão Novo permanece ativo para limpar a seleção visual do formulário.
+     * <p>Em modo edição (gestor), Novo, Salvar e Excluir ficam habilitados e o
+     * botão "Atualizar status" fica oculto, pois Salvar já cobre a alteração de
+     * status. Em modo leitura (colaborador), Novo, Salvar e Excluir são
+     * desabilitados e apenas "Atualizar status" fica disponível, permitindo ao
+     * colaborador atualizar o status das próprias tarefas.
      */
     private JPanel construirBotoes() {
         JPanel painel = new JPanel();
         JButton novo = new JButton("Novo");
         JButton salvar = new JButton("Salvar");
         JButton excluir = new JButton("Excluir");
+        JButton atualizarStatus = new JButton("Atualizar status");
         novo.addActionListener(evento -> limparFormulario());
         salvar.addActionListener(evento -> salvar());
         excluir.addActionListener(evento -> excluir());
-        // Modo leitura: colaborador não pode persistir nem remover tarefas
+        atualizarStatus.addActionListener(evento -> atualizarStatus());
+        // Modo leitura: colaborador não cria, edita nem remove tarefas; só atualiza status
+        novo.setEnabled(!modoLeitura);
         salvar.setEnabled(!modoLeitura);
         excluir.setEnabled(!modoLeitura);
+        // "Atualizar status" só faz sentido no modo leitura — na edição, Salvar já cobre o status
+        atualizarStatus.setVisible(modoLeitura);
         painel.add(novo);
         painel.add(salvar);
         painel.add(excluir);
+        painel.add(atualizarStatus);
         return painel;
     }
 
@@ -261,11 +285,11 @@ public class TarefaView extends JFrame {
         try {
             Tarefa tarefa = lerFormulario();
             if (tarefaSelecionadaId == null) {
-                controller.salvar(tarefa);
+                controller.salvar(tarefa, usuarioSessao);
                 SwingUtils.exibirInformacao(this, "Tarefa cadastrada com sucesso.");
             } else {
                 tarefa.setId(tarefaSelecionadaId);
-                controller.atualizar(tarefa);
+                controller.atualizar(tarefa, usuarioSessao);
                 SwingUtils.exibirInformacao(this, "Tarefa atualizada com sucesso.");
             }
             limparFormulario();
@@ -285,10 +309,32 @@ public class TarefaView extends JFrame {
         if (opcao != JOptionPane.YES_OPTION) {
             return;
         }
-        controller.excluir(tarefaSelecionadaId);
+        controller.excluir(tarefaSelecionadaId, usuarioSessao);
         SwingUtils.exibirInformacao(this, "Tarefa excluída com sucesso.");
         limparFormulario();
         recarregarTabela();
+    }
+
+    /**
+     * Atualiza o status da tarefa selecionada na tabela com o valor escolhido no
+     * combo de status. Usado no modo leitura (colaborador), que não pode editar a
+     * tarefa por completo mas pode alterar o status das próprias tarefas. A regra
+     * de que o solicitante deve ser o responsável é validada no controller.
+     */
+    private void atualizarStatus() {
+        if (tarefaSelecionadaId == null) {
+            SwingUtils.exibirErro(this, "Selecione uma tarefa na tabela para atualizar o status.");
+            return;
+        }
+        try {
+            StatusTarefa novoStatus = (StatusTarefa) campoStatus.getSelectedItem();
+            controller.atualizarStatus(tarefaSelecionadaId, novoStatus, usuarioSessao);
+            SwingUtils.exibirInformacao(this, "Status atualizado com sucesso.");
+            limparFormulario();
+            recarregarTabela();
+        } catch (ValidacaoException excecao) {
+            SwingUtils.exibirErro(this, excecao.getMessage());
+        }
     }
 
     private Tarefa lerFormulario() {
@@ -370,13 +416,15 @@ public class TarefaView extends JFrame {
             }
             tarefas = controller.findByProjetoId(projetoFiltro.getId());
         }
-        // Indexa os responsáveis por id antes do loop para resolver o nome em O(1)
-        // por linha, evitando uma varredura do combo a cada tarefa.
+        // Indexa responsáveis e projetos por id antes do loop para resolver o nome
+        // em O(1) por linha, evitando uma varredura a cada tarefa.
         Map<Integer, String> nomesResponsaveis = mapearNomesResponsaveis();
+        Map<Integer, String> nomesProjetos = mapearNomesProjetos();
         for (Tarefa tarefa : tarefas) {
             tableModel.addRow(new Object[] {
                 tarefa.getId(),
                 tarefa.getTitulo(),
+                nomesProjetos.getOrDefault(tarefa.getProjetoId(), "?"),
                 nomesResponsaveis.getOrDefault(tarefa.getResponsavelId(), "?"),
                 DateUtils.format(tarefa.getDataInicio()),
                 DateUtils.format(tarefa.getDataTerminoPrevista()),
@@ -390,6 +438,20 @@ public class TarefaView extends JFrame {
         for (int i = 0; i < comboResponsavel.getItemCount(); i++) {
             Usuario usuario = comboResponsavel.getItemAt(i);
             nomes.put(usuario.getId(), usuario.getNomeCompleto());
+        }
+        return nomes;
+    }
+
+    /**
+     * Indexa os nomes dos projetos por id a partir de {@code controller.listarProjetos()},
+     * permitindo resolver o nome do projeto de cada tarefa em O(1) ao montar a tabela.
+     *
+     * @return mapa de id do projeto para o respectivo nome
+     */
+    private Map<Integer, String> mapearNomesProjetos() {
+        Map<Integer, String> nomes = new HashMap<>();
+        for (Projeto projeto : controller.listarProjetos()) {
+            nomes.put(projeto.getId(), projeto.getNome());
         }
         return nomes;
     }

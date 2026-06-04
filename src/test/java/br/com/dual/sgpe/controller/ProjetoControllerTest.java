@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import br.com.dual.sgpe.dao.EquipeDao;
+import br.com.dual.sgpe.dao.EquipeUsuarioDao;
 import br.com.dual.sgpe.dao.ProjetoDao;
 import br.com.dual.sgpe.dao.ProjetoEquipeDao;
+import br.com.dual.sgpe.dao.UsuarioDao;
 import br.com.dual.sgpe.database.DatabaseConnection;
 import br.com.dual.sgpe.database.DatabaseMigrator;
 import br.com.dual.sgpe.exception.ExclusaoBloqueadaException;
@@ -15,12 +17,17 @@ import br.com.dual.sgpe.exception.RegistroDuplicadoException;
 import br.com.dual.sgpe.exception.ValidacaoException;
 import br.com.dual.sgpe.model.entity.Equipe;
 import br.com.dual.sgpe.model.entity.Projeto;
+import br.com.dual.sgpe.model.entity.Usuario;
+import br.com.dual.sgpe.model.enums.PerfilUsuario;
 import br.com.dual.sgpe.model.enums.StatusProjeto;
+import br.com.dual.sgpe.model.filter.ProjetoFiltro;
+import br.com.dual.sgpe.security.EscopoColaborador;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,14 +39,24 @@ class ProjetoControllerTest {
 
     private DatabaseConnection connection;
     private ProjetoController controller;
+    private EquipeDao equipeDao;
+    private EquipeUsuarioDao equipeUsuarioDao;
+    private ProjetoEquipeDao projetoEquipeDao;
+    private UsuarioDao usuarioDao;
+    private EscopoColaborador escopo;
 
     @BeforeEach
     void setUp() {
         String url = "jdbc:sqlite:" + tempDir.resolve("test.db");
         connection = new DatabaseConnection(url);
         new DatabaseMigrator(connection).migrate();
-        controller = new ProjetoController(new ProjetoDao(connection),
-            new ProjetoEquipeDao(connection), new EquipeDao(connection));
+        equipeDao = new EquipeDao(connection);
+        equipeUsuarioDao = new EquipeUsuarioDao(connection);
+        projetoEquipeDao = new ProjetoEquipeDao(connection);
+        usuarioDao = new UsuarioDao(connection);
+        ProjetoDao projetoDao = new ProjetoDao(connection);
+        escopo = new EscopoColaborador(equipeUsuarioDao, projetoEquipeDao, projetoDao);
+        controller = new ProjetoController(projetoDao, projetoEquipeDao, equipeDao, escopo);
     }
 
     private Projeto novo(String nome, LocalDate inicio, LocalDate termino, StatusProjeto status) {
@@ -178,5 +195,59 @@ class ProjetoControllerTest {
         controller.salvar(novo("B", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), StatusProjeto.CONCLUIDO));
 
         assertEquals(2, controller.listarPorStatus(null).size());
+    }
+
+    @Test
+    void consultarGerenteVeApenasSeusProjetos() {
+        Projeto p1 = controller.salvar(novo("P1", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), StatusProjeto.PLANEJADO));
+        controller.salvar(novo("P2", LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), StatusProjeto.PLANEJADO));
+
+        int gerenteId = usuarioDao.inserir(new Usuario("Gerente", "11111111111",
+            "gerente@test.com", "Gestor", "gerente", "senha", PerfilUsuario.GERENTE));
+        Usuario gerente = usuarioDao.buscarPorId(gerenteId).orElseThrow();
+        Equipe equipe = new Equipe("Equipe G", "Desc");
+        equipeDao.inserir(equipe);
+        equipeUsuarioDao.vincular(equipe.getId(), gerenteId);
+        controller.vincularEquipe(p1.getId(), equipe.getId());
+
+        List<Projeto> resultado = controller.consultar(new ProjetoFiltro(), gerente);
+
+        assertEquals(1, resultado.size());
+        assertEquals(p1.getId(), resultado.get(0).getId());
+    }
+
+    @Test
+    void atualizarForaDoEscopoLancaValidacao() {
+        Projeto p1 = controller.salvar(novo("P1", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), StatusProjeto.PLANEJADO));
+        int gerenteId = usuarioDao.inserir(new Usuario("Gerente", "11111111111",
+            "gerente@test.com", "Gestor", "gerente", "senha", PerfilUsuario.GERENTE));
+        Usuario gerente = usuarioDao.buscarPorId(gerenteId).orElseThrow();
+
+        p1.setNome("Novo Nome");
+        assertThrows(ValidacaoException.class, () -> controller.atualizar(p1, gerente));
+    }
+
+    @Test
+    void excluirForaDoEscopoLancaValidacao() {
+        Projeto p1 = controller.salvar(novo("P1", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), StatusProjeto.PLANEJADO));
+        int gerenteId = usuarioDao.inserir(new Usuario("Gerente", "11111111111",
+            "gerente@test.com", "Gestor", "gerente", "senha", PerfilUsuario.GERENTE));
+        Usuario gerente = usuarioDao.buscarPorId(gerenteId).orElseThrow();
+
+        assertThrows(ValidacaoException.class, () -> controller.excluir(p1.getId(), gerente));
+    }
+
+    @Test
+    void consultarAdminVeTodos() {
+        controller.salvar(novo("P1", LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), StatusProjeto.PLANEJADO));
+        controller.salvar(novo("P2", LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 31), StatusProjeto.PLANEJADO));
+
+        int adminId = usuarioDao.inserir(new Usuario("Admin", "99999999999",
+            "admin@test.com", "Diretor", "admin", "senha", PerfilUsuario.ADMINISTRADOR));
+        Usuario admin = usuarioDao.buscarPorId(adminId).orElseThrow();
+
+        List<Projeto> resultado = controller.consultar(new ProjetoFiltro(), admin);
+
+        assertEquals(2, resultado.size());
     }
 }

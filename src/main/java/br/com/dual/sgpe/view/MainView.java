@@ -129,10 +129,10 @@ public class MainView extends JFrame {
         boolean colaborador = usuario.getPerfil() == PerfilUsuario.COLABORADOR;
         JFrame janela = switch (recurso) {
             case USUARIOS -> new UsuarioView(usuarioController);
-            case PROJETOS -> new ProjetoView(projetoController);
+            case PROJETOS -> new ProjetoView(projetoController, tarefaController, usuario);
             case TAREFAS -> new TarefaView(tarefaController, usuario, colaborador);
-            case EQUIPES -> new EquipeView(equipeController);
-            case CONSULTA -> new ConsultaProjetoView(projetoController, usuario, escopoColaborador);
+            case EQUIPES -> new EquipeView(equipeController, usuario);
+            case CONSULTA -> new ConsultaProjetoView(projetoController, tarefaController, usuario);
             case RELATORIO -> new RelatorioView(relatorioController, usuario, escopoColaborador);
         };
         // Fechar uma tela de recurso volta ao hub; apenas a MainView encerra o app.

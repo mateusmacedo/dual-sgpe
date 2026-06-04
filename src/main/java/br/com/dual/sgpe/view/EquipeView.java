@@ -42,6 +42,7 @@ import javax.swing.table.DefaultTableModel;
 public class EquipeView extends JFrame {
 
     private final transient EquipeController controller;
+    private final transient Usuario usuarioSessao;
 
     private final JTextField campoNome = new JTextField(24);
     private final JTextField campoDescricao = new JTextField(24);
@@ -57,11 +58,14 @@ public class EquipeView extends JFrame {
     /**
      * Cria e exibe a janela de equipes.
      *
-     * @param controller controller que processa as operações CRUD e consultas de membros
+     * @param controller    controller que processa as operações CRUD e consultas de membros
+     * @param usuarioSessao usuário autenticado; seu perfil filtra os usuários
+     *                      elegíveis para ingressar na equipe (hierarquia de perfis)
      */
-    public EquipeView(EquipeController controller) {
+    public EquipeView(EquipeController controller, Usuario usuarioSessao) {
         super("Cadastro de Equipes — SGPE");
         this.controller = controller;
+        this.usuarioSessao = usuarioSessao;
         configurarJanela();
         recarregarTabela();
     }
@@ -150,7 +154,7 @@ public class EquipeView extends JFrame {
                 SwingUtils.exibirInformacao(this, "Equipe cadastrada com sucesso.");
             } else {
                 equipe.setId(equipeSelecionadaId);
-                controller.atualizar(equipe);
+                controller.atualizar(equipe, usuarioSessao);
                 SwingUtils.exibirInformacao(this, "Equipe atualizada com sucesso.");
             }
             limparFormulario();
@@ -171,7 +175,7 @@ public class EquipeView extends JFrame {
             return;
         }
         try {
-            controller.excluir(equipeSelecionadaId);
+            controller.excluir(equipeSelecionadaId, usuarioSessao);
             SwingUtils.exibirInformacao(this, "Equipe excluída com sucesso.");
             limparFormulario();
             recarregarTabela();
@@ -230,7 +234,7 @@ public class EquipeView extends JFrame {
             Set<Integer> membroIds = membros.stream()
                 .map(Usuario::getId).collect(Collectors.toSet());
             DefaultComboBoxModel<Usuario> modelo = new DefaultComboBoxModel<>();
-            for (Usuario u : controller.listarUsuarios()) {
+            for (Usuario u : controller.listarUsuarios(usuarioSessao.getPerfil())) {
                 if (!membroIds.contains(u.getId())) {
                     modelo.addElement(u);
                 }
@@ -247,7 +251,8 @@ public class EquipeView extends JFrame {
                 return;
             }
             try {
-                controller.adicionarMembro(equipeSelecionadaId, selecionado.getId());
+                controller.adicionarMembro(equipeSelecionadaId, selecionado.getId(),
+                    usuarioSessao);
                 recarregar.run();
             } catch (ValidacaoException | RegistroDuplicadoException ex) {
                 SwingUtils.exibirErro(this, ex.getMessage());
@@ -262,7 +267,7 @@ public class EquipeView extends JFrame {
                 return;
             }
             int usuarioId = (int) modeloMembros.getValueAt(linha, 0);
-            controller.removerMembro(equipeSelecionadaId, usuarioId);
+            controller.removerMembro(equipeSelecionadaId, usuarioId, usuarioSessao);
             recarregar.run();
         });
 

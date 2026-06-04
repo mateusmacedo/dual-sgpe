@@ -63,16 +63,17 @@ public class Main {
 
         LoginController loginController = new LoginController(usuarioDao);
         UsuarioController usuarioController = new UsuarioController(usuarioDao);
-        ProjetoController projetoController =
-            new ProjetoController(projetoDao, projetoEquipeDao, equipeDao);
-        TarefaController tarefaController =
-            new TarefaController(tarefaDao, projetoDao, usuarioDao);
-        EquipeController equipeController =
-            new EquipeController(equipeDao, equipeUsuarioDao, usuarioDao);
-        RelatorioController relatorioController =
-            new RelatorioController(projetoDao, relatorioDao, projetoEquipeDao, equipeDao, usuarioDao);
         EscopoColaborador escopoColaborador =
             new EscopoColaborador(equipeUsuarioDao, projetoEquipeDao, projetoDao);
+        ProjetoController projetoController =
+            new ProjetoController(projetoDao, projetoEquipeDao, equipeDao, escopoColaborador);
+        TarefaController tarefaController =
+            new TarefaController(tarefaDao, projetoDao, usuarioDao, escopoColaborador);
+        EquipeController equipeController =
+            new EquipeController(equipeDao, equipeUsuarioDao, usuarioDao, projetoEquipeDao,
+                escopoColaborador);
+        RelatorioController relatorioController =
+            new RelatorioController(projetoDao, relatorioDao, projetoEquipeDao, equipeDao, usuarioDao);
 
         // Toda criação/manipulação de componentes Swing deve ocorrer na EDT;
         // invokeLater garante essa regra mesmo que main() rode em outra thread.

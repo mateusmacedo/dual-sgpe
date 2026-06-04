@@ -49,8 +49,8 @@ public class RelatorioView extends JFrame {
     private final transient Usuario usuarioSessao;
     /** Provedor de escopo que restringe projetos visíveis ao colaborador logado. */
     private final transient EscopoColaborador escopo;
-    /** {@code true} quando o usuário em sessão possui perfil COLABORADOR. */
-    private final boolean colaborador;
+    /** {@code true} quando o perfil do usuário restringe a visão ao escopo de suas equipes. */
+    private final boolean escopoRestrito;
 
     private final JComboBox<Projeto> comboProjeto = new JComboBox<>();
     private final JLabel labelNome = new JLabel("-");
@@ -76,7 +76,7 @@ public class RelatorioView extends JFrame {
         this.controller = controller;
         this.usuarioSessao = usuarioSessao;
         this.escopo = escopo;
-        this.colaborador = usuarioSessao.getPerfil() == PerfilUsuario.COLABORADOR;
+        this.escopoRestrito = usuarioSessao.getPerfil() != PerfilUsuario.ADMINISTRADOR;
         carregarComboProjetos();
         configurarJanela();
     }
@@ -92,7 +92,7 @@ public class RelatorioView extends JFrame {
     private void carregarComboProjetos() {
         DefaultComboBoxModel<Projeto> modelo = new DefaultComboBoxModel<>();
         // Escopo restrito ao colaborador vs. lista global do gestor
-        List<Projeto> projetos = colaborador
+        List<Projeto> projetos = escopoRestrito
             ? escopo.projetosDoColaborador(usuarioSessao.getId())
             : controller.listarProjetos();
         for (Projeto p : projetos) {

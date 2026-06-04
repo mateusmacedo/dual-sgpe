@@ -35,7 +35,7 @@ class UsuarioDaoTest {
     }
 
     private Usuario novoUsuario(String login, String cpf) {
-        return new Usuario("João Silva", cpf, "joao@exemplo.com", "Desenvolvedor",
+        return new Usuario("João Silva", cpf, login + "@exemplo.com", "Desenvolvedor",
             login, "senha123", PerfilUsuario.COLABORADOR);
     }
 
@@ -106,6 +106,18 @@ class UsuarioDaoTest {
 
         int outro = dao.inserir(novoUsuario("maria", "222"));
         assertTrue(dao.existsByLoginExcetoId("joao", outro));
+    }
+
+    @Test
+    void existsByEmailDetectaDuplicado() {
+        int id = dao.inserir(novoUsuario("joao", "111"));
+
+        assertTrue(dao.existsByEmail("joao@exemplo.com"));
+        assertFalse(dao.existsByEmail("maria@exemplo.com"));
+        assertFalse(dao.existsByEmailExcetoId("joao@exemplo.com", id));
+
+        int outro = dao.inserir(novoUsuario("maria", "222"));
+        assertTrue(dao.existsByEmailExcetoId("joao@exemplo.com", outro));
     }
 
     @Test

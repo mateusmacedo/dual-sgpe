@@ -1,9 +1,11 @@
 package br.com.dual.sgpe.view;
 
 import br.com.dual.sgpe.controller.ProjetoController;
+import br.com.dual.sgpe.controller.TarefaController;
 import br.com.dual.sgpe.exception.ValidacaoException;
 import br.com.dual.sgpe.model.entity.Equipe;
 import br.com.dual.sgpe.model.entity.Projeto;
+import br.com.dual.sgpe.model.entity.Tarefa;
 import br.com.dual.sgpe.model.entity.Usuario;
 import br.com.dual.sgpe.model.enums.StatusProjeto;
 import br.com.dual.sgpe.model.filter.ProjetoFiltro;
@@ -15,7 +17,9 @@ import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
@@ -25,9 +29,11 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -43,8 +49,8 @@ public class ConsultaProjetoView extends JFrame {
     private static final String FILTRO_TODAS = "Todas";
 
     private final transient ProjetoController controller;
+    private final transient TarefaController tarefaController;
     private final transient Usuario usuarioSessao;
-    private final transient EscopoColaborador escopo;
 
     private final JTextField campoNome = new JTextField(20);
     private final JComboBox<Object> comboStatus = new JComboBox<>();
@@ -57,20 +63,29 @@ public class ConsultaProjetoView extends JFrame {
         new Object[] {"ID", "Nome", "Descrição", "Início", "Término", "Status"});
     private final JTable tabela = new JTable(tableModel);
 
+    // Tabelas de detalhe do projeto selecionado (somente leitura).
+    private final DefaultTableModel tarefasModel = SwingUtils.modeloSomenteLeitura(
+        new Object[] {"ID", "Título", "Responsável", "Início", "Término", "Status"});
+    private final JTable tabelaTarefas = new JTable(tarefasModel);
+
+    private final DefaultTableModel equipesModel = SwingUtils.modeloSomenteLeitura(
+        new Object[] {"ID", "Nome"});
+    private final JTable tabelaEquipes = new JTable(equipesModel);
+
     /**
      * Cria a janela, carrega combos de status e equipes, aplica a fonte base à hierarquia
      * de componentes e dispara uma pesquisa inicial para preencher a tabela.
      *
-     * @param controller     controller de projetos; fornece dados de equipes e resultados de consulta
-     * @param usuarioSessao  usuário autenticado; determina se o filtro de escopo será ativado
-     * @param escopo         serviço que mapeia um colaborador aos seus projetos permitidos
+     * @param controller       controller de projetos; fornece dados de equipes e resultados de consulta
+     * @param tarefaController  controller de tarefas; fornece as tarefas do projeto selecionado
+     * @param usuarioSessao    usuário autenticado; determina se o filtro de escopo será ativado
      */
-    public ConsultaProjetoView(ProjetoController controller, Usuario usuarioSessao,
-                               EscopoColaborador escopo) {
+    public ConsultaProjetoView(ProjetoController controller, TarefaController tarefaController,
+                               Usuario usuarioSessao) {
         super("Consulta de Projetos — SGPE");
         this.controller = controller;
+        this.tarefaController = tarefaController;
         this.usuarioSessao = usuarioSessao;
-        this.escopo = escopo;
         carregarCombos();
         configurarJanela();
         pesquisar();
@@ -116,10 +131,82 @@ public class ConsultaProjetoView extends JFrame {
         setContentPane(conteudo);
 
         conteudo.add(construirFiltros(), BorderLayout.NORTH);
-        conteudo.add(new JScrollPane(tabela), BorderLayout.CENTER);
+        conteudo.add(construirCentro(), BorderLayout.CENTER);
+
+        // ListSelectionListener espelhando ProjetoView: getValueIsAdjusting filtra
+        // eventos intermediários do arrasto, disparando o detalhamento apenas ao
+        // final da seleção.
+        tabela.getSelectionModel().addListSelectionListener(evento -> {
+            if (!evento.getValueIsAdjusting()) {
+                detalharSelecionado();
+            }
+        });
 
         SwingUtils.aplicarFonte(conteudo, SwingUtils.FONTE_BASE);
         SwingUtils.configurarTabela(tabela, SwingUtils.FONTE_BASE);
+        SwingUtils.configurarTabela(tabelaTarefas, SwingUtils.FONTE_BASE);
+        SwingUtils.configurarTabela(tabelaEquipes, SwingUtils.FONTE_BASE);
+    }
+
+    /**
+     * Monta a região central: tabela de resultados acima e, abaixo, um painel de
+     * detalhes do projeto selecionado com as tarefas e as equipes vinculadas.
+     */
+    private JPanel construirCentro() {
+        JPanel painel = new JPanel(new BorderLayout());
+
+        JScrollPane painelTarefas = new JScrollPane(tabelaTarefas);
+        painelTarefas.setBorder(new TitledBorder("Tarefas do projeto"));
+        JScrollPane painelEquipes = new JScrollPane(tabelaEquipes);
+        painelEquipes.setBorder(new TitledBorder("Equipes do projeto"));
+
+        // Detalhes lado a lado: tarefas à esquerda, equipes à direita.
+        JSplitPane detalhes = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
+            painelTarefas, painelEquipes);
+        detalhes.setResizeWeight(0.65);
+
+        // Split vertical: resultados em cima, detalhes do projeto selecionado embaixo.
+        JSplitPane divisor = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+            new JScrollPane(tabela), detalhes);
+        divisor.setResizeWeight(0.6);
+
+        painel.add(divisor, BorderLayout.CENTER);
+        return painel;
+    }
+
+    /**
+     * Exibe os detalhes do projeto selecionado na tabela de resultados: lista as
+     * tarefas (via {@code tarefaController.findByProjetoId}) e as equipes
+     * vinculadas (via {@code controller.listarEquipesDoProjeto}). Sem seleção
+     * válida, ambas as tabelas de detalhe são esvaziadas.
+     */
+    private void detalharSelecionado() {
+        int linha = tabela.getSelectedRow();
+        tarefasModel.setRowCount(0);
+        equipesModel.setRowCount(0);
+        if (linha < 0) {
+            return;
+        }
+        int projetoId = (int) tableModel.getValueAt(linha, 0);
+
+        Map<Integer, String> nomesResponsaveis = new HashMap<>();
+        for (Usuario usuario : tarefaController.listarResponsaveis()) {
+            nomesResponsaveis.put(usuario.getId(), usuario.getNomeCompleto());
+        }
+        for (Tarefa tarefa : tarefaController.findByProjetoId(projetoId)) {
+            tarefasModel.addRow(new Object[] {
+                tarefa.getId(),
+                tarefa.getTitulo(),
+                nomesResponsaveis.getOrDefault(tarefa.getResponsavelId(), "?"),
+                DateUtils.format(tarefa.getDataInicio()),
+                DateUtils.format(tarefa.getDataTerminoPrevista()),
+                tarefa.getStatus()
+            });
+        }
+
+        for (Equipe equipe : controller.listarEquipesDoProjeto(projetoId)) {
+            equipesModel.addRow(new Object[] {equipe.getId(), equipe.getNome()});
+        }
     }
 
     /**
@@ -194,7 +281,10 @@ public class ConsultaProjetoView extends JFrame {
         try {
             ProjetoFiltro filtro = montarFiltro();
             // O escopo do colaborador é aplicado dentro do controller pelo overload.
-            List<Projeto> resultado = controller.consultar(filtro, usuarioSessao, escopo);
+            List<Projeto> resultado = controller.consultar(filtro, usuarioSessao);
+            // Limpa a seleção antes de repovoar para que o painel de detalhes não
+            // exiba dados de um projeto que pode não constar do novo resultado.
+            tabela.clearSelection();
             tableModel.setRowCount(0);
             for (Projeto projeto : resultado) {
                 tableModel.addRow(new Object[] {
