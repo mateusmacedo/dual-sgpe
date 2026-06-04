@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGPE — Sistema de Gestão de Projetos e Equipes</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --bg-2:#0e1426;
+    --panel:#141c33;
+    --panel-2:#1a2440;
+    --text:#eef2fb;
+    --muted:#93a1bf;
+    --accent:#4f8cff;
+    --accent-2:#22d3ee;
+    --border:#26324d;
+    --success:#34d399;
+    --warning:#fbbf24;
+    --danger:#f87171;
+    --shadow:0 18px 50px -20px rgba(0,0,0,.65);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif;
+    background:
+      radial-gradient(1200px 700px at 12% -10%, rgba(79,140,255,.16), transparent 55%),
+      radial-gradient(1000px 650px at 100% 110%, rgba(34,211,238,.12), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Stage / 16:9 deck ---------- */
+  .stage{position:fixed;inset:0;display:grid;place-items:center}
+  .deck{
+    position:relative;
+    aspect-ratio:16/9;
+    width:min(100vw, calc(100vh * 16 / 9));
+    height:min(100vh, calc(100vw * 9 / 16));
+    container-type:size;
+    background:linear-gradient(180deg,var(--bg-2),var(--bg));
+    overflow:hidden;
+  }
+
+  /* ---------- Slides ---------- */
+  .slide{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;justify-content:center;
+    padding:7cqh 7cqw;
+    opacity:0;transform:translateY(2cqh) scale(.994);
+    pointer-events:none;
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  .slide.active{opacity:1;transform:none;pointer-events:auto}
+
+  /* ---------- Typography ---------- */
+  .eyebrow{
+    font-size:1.9cqh;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--accent-2);margin-bottom:2.4cqh;display:flex;align-items:center;gap:1.2cqh;
+  }
+  .eyebrow::before{content:"";width:3.4cqh;height:.32cqh;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:2px}
+  h1.title{font-size:5.4cqh;font-weight:800;line-height:1.05;letter-spacing:-.015em}
+  h2.title{font-size:4.8cqh;font-weight:800;line-height:1.06;letter-spacing:-.012em;margin-bottom:2.6cqh}
+  .lead{font-size:2.6cqh;color:var(--muted);font-weight:400;line-height:1.45;max-width:64cqw}
+  .gradient{
+    background:linear-gradient(92deg,var(--accent),var(--accent-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ---------- Layout helpers ---------- */
+  .row{display:flex;gap:2.4cqw}
+  .grid{display:grid;gap:2.2cqh 2.2cqw}
+  .g-2{grid-template-columns:repeat(2,1fr)}
+  .g-3{grid-template-columns:repeat(3,1fr)}
+  .g-4{grid-template-columns:repeat(4,1fr)}
+  .cols-2{display:grid;grid-template-columns:1.05fr .95fr;gap:3cqw;align-items:center}
+  .mt{margin-top:3cqh}
+  .center{align-items:center;text-align:center}
+
+  /* ---------- Cards ---------- */
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--border);border-radius:1.6cqh;
+    padding:2.8cqh 2.6cqw;box-shadow:var(--shadow);
+  }
+  .card h3{font-size:2.5cqh;font-weight:700;margin-bottom:.9cqh;display:flex;align-items:center;gap:1.2cqh}
+  .card p{font-size:2cqh;color:var(--muted);line-height:1.42}
+  .card .tagline{font-size:1.7cqh;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:1cqh}
+
+  /* ---------- Icons ---------- */
+  .ic{width:1em;height:1em;stroke:currentColor;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic-badge{
+    width:5.4cqh;height:5.4cqh;border-radius:1.2cqh;display:grid;place-items:center;
+    background:rgba(79,140,255,.13);border:1px solid rgba(79,140,255,.28);color:var(--accent-2);
+    font-size:3cqh;margin-bottom:1.8cqh;
+  }
+
+  /* ---------- Chips / tags ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:1.2cqh 1.2cqw}
+  .chip{
+    font-size:1.95cqh;font-weight:600;padding:1.05cqh 1.7cqw;border-radius:10cqh;
+    background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+    display:inline-flex;align-items:center;gap:.9cqh;
+  }
+  .chip.accent{background:rgba(79,140,255,.12);border-color:rgba(79,140,255,.32);color:#cfe0ff}
+
+  /* ---------- Points ---------- */
+  .points{display:flex;flex-direction:column;gap:1.9cqh;margin-top:1cqh}
+  .point{display:flex;align-items:flex-start;gap:1.6cqh;font-size:2.25cqh;line-height:1.34}
+  .point .dot{width:2.7cqh;height:2.7cqh;border-radius:50%;background:rgba(52,211,153,.14);color:var(--success);display:grid;place-items:center;font-size:1.6cqh;margin-top:.3cqh;flex:0 0 auto}
+  .point .dot.b{background:rgba(79,140,255,.16);color:var(--accent)}
+
+  /* ---------- Stats ---------- */
+  .stat{display:flex;flex-direction:column;gap:.5cqh}
+  .stat .num{font-size:8.5cqh;font-weight:800;line-height:.95;letter-spacing:-.02em}
+  .stat .lbl{font-size:1.95cqh;color:var(--muted);font-weight:500}
+  .hero-num{font-size:24cqh;font-weight:800;line-height:.85;letter-spacing:-.03em}
+
+  /* ---------- Flow diagram ---------- */
+  .flow{display:flex;align-items:stretch;gap:0;margin-top:1cqh}
+  .flow .node{
+    flex:1;background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--border);border-radius:1.4cqh;padding:2.6cqh 1.8cqw;text-align:center;
+  }
+  .flow .node .ic-badge{margin:0 auto 1.4cqh}
+  .flow .node h4{font-size:2.4cqh;font-weight:700;margin-bottom:.7cqh}
+  .flow .node span{font-size:1.7cqh;color:var(--muted);line-height:1.3;display:block}
+  .flow .arrow{display:grid;place-items:center;width:4.6cqw;color:var(--accent);font-size:3.4cqh;flex:0 0 auto}
+
+  /* ---------- Timeline ---------- */
+  .pair{display:flex;align-items:center;gap:2cqw}
+  .pair .now,.pair .next{flex:1;border-radius:1.3cqh;padding:2.2cqh 2cqw;font-size:2.05cqh;border:1px solid var(--border)}
+  .pair .now{background:rgba(248,113,113,.07);border-color:rgba(248,113,113,.28)}
+  .pair .next{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.30)}
+  .pair .mini{font-size:1.55cqh;font-weight:700;letter-spacing:.14em;text-transform:uppercase;display:block;margin-bottom:.7cqh;color:var(--muted)}
+  .pair .arrow{color:var(--accent);font-size:3cqh}
+
+  /* ---------- Matrix ---------- */
+  table.matrix{width:100%;border-collapse:collapse;font-size:2.05cqh;margin-top:.5cqh}
+  table.matrix th,table.matrix td{padding:1.5cqh 1.4cqw;text-align:center;border-bottom:1px solid var(--border)}
+  table.matrix th:first-child,table.matrix td:first-child{text-align:left;color:var(--text);font-weight:600}
+  table.matrix thead th{font-size:1.8cqh;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  table.matrix td .ok{color:var(--success);font-weight:800}
+  table.matrix td .no{color:#52607d}
+  table.matrix td .part{color:var(--warning);font-weight:700}
+
+  /* ---------- Callout ---------- */
+  .callout{
+    border-left:.5cqh solid var(--accent);background:rgba(79,140,255,.08);
+    border-radius:.6cqh 1.2cqh 1.2cqh .6cqh;padding:2.2cqh 2.4cqw;font-size:2.15cqh;line-height:1.4;
+  }
+  .callout.warn{border-left-color:var(--warning);background:rgba(251,191,36,.08)}
+  .callout strong{color:#fff}
+
+  .quote{font-size:3.4cqh;font-weight:700;line-height:1.28;letter-spacing:-.01em;max-width:72cqw}
+  .quote .gradient{font-weight:800}
+
+  /* ---------- Code ---------- */
+  pre.code{
+    background:#080d1b;border:1px solid var(--border);border-radius:1.2cqh;
+    padding:2.2cqh 2.2cqw;font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+    font-size:1.95cqh;line-height:1.7;color:#cdd9f0;overflow:hidden;
+  }
+  pre.code .c{color:#5f7396}
+  pre.code .g{color:var(--success)}
+
+  .foot{margin-top:auto;padding-top:2.6cqh;font-size:1.6cqh;color:#5f6f90;display:flex;align-items:center;gap:1cqh}
+  .foot .src{color:var(--muted)}
+  .source-tag{font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  /* ---------- Reveal ---------- */
+  .r{opacity:0;transform:translateY(1.6cqh);transition:opacity .5s ease, transform .5s ease}
+  .r.show{opacity:1;transform:none}
+
+  /* ---------- Chrome: progress, counter, nav ---------- */
+  .progress{position:fixed;top:0;left:0;right:0;height:4px;background:rgba(255,255,255,.06);z-index:30}
+  .progress-bar{height:100%;width:7%;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .5s ease}
+  .counter{
+    position:fixed;right:22px;bottom:18px;z-index:30;font-size:14px;font-weight:600;
+    color:var(--muted);font-variant-numeric:tabular-nums;letter-spacing:.06em;
+    background:rgba(10,15,30,.6);border:1px solid var(--border);padding:6px 12px;border-radius:20px;backdrop-filter:blur(6px);
+  }
+  .counter b{color:var(--text)}
+  .nav{position:fixed;left:18px;bottom:16px;z-index:30;display:flex;gap:8px}
+  .nav button{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--border);
+    background:rgba(20,28,51,.7);color:var(--text);cursor:pointer;font-size:17px;
+    display:grid;place-items:center;transition:.2s;backdrop-filter:blur(6px);
+  }
+  .nav button:hover{background:var(--accent);border-color:var(--accent);color:#04122e}
+  .hint{
+    position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:30;
+    font-size:12.5px;color:#56648a;display:flex;align-items:center;gap:8px;transition:opacity .6s ease;
+  }
+  .kbd{font-family:ui-monospace,monospace;font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--muted);background:rgba(255,255,255,.03)}
+
+  .brand-mark{display:flex;align-items:center;gap:1.6cqh;margin-bottom:3.4cqh}
+  .brand-logo{width:7cqh;height:7cqh;border-radius:1.6cqh;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;color:#04122e;font-weight:800;font-size:3.4cqh;box-shadow:0 10px 30px -8px rgba(79,140,255,.6)}
+  .brand-name{font-size:2.4cqh;font-weight:700;letter-spacing:.04em}
+  .brand-name span{display:block;font-size:1.6cqh;font-weight:500;color:var(--muted);letter-spacing:.02em}
+</style>
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6.2a3 3 0 0 1 0 5.6"/><path d="M17.5 19a5 5 0 0 0-3-4.6"/></symbol>
+  <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.2H19.5A1.5 1.5 0 0 1 21 8.7v9.3a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></symbol>
+  <symbol id="ic-team" viewBox="0 0 24 24"><circle cx="7" cy="9" r="2.6"/><circle cx="17" cy="9" r="2.6"/><path d="M2.5 18a4.5 4.5 0 0 1 9 0"/><path d="M12.5 18a4.5 4.5 0 0 1 9 0"/></symbol>
+  <symbol id="ic-task" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8.5 12.2l2.3 2.3 4.7-5"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 3l7 2.5v5.5c0 4.6-3 7.8-7 9.5-4-1.7-7-4.9-7-9.5V5.5z"/><path d="M9 12l2 2 4-4.2"/></symbol>
+  <symbol id="ic-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7" ry="2.6"/><path d="M5 5.5v13c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-13"/><path d="M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"/></symbol>
+  <symbol id="ic-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+  <symbol id="ic-screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4"/></symbol>
+  <symbol id="ic-cog" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></symbol>
+  <symbol id="ic-chart" viewBox="0 0 24 24"><path d="M4 4v16h16"/><rect x="7.5" y="11" width="2.6" height="6"/><rect x="12.5" y="7.5" width="2.6" height="9.5"/><rect x="17.5" y="13.5" width="2.6" height="3.5"/></symbol>
+  <symbol id="ic-filter" viewBox="0 0 24 24"><path d="M3.5 5h17l-6.5 8v5l-4 2v-7z"/></symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24"><path d="M9 14.5l6-6"/><path d="M10.5 6.5l1.7-1.7a3.7 3.7 0 0 1 5.2 5.2L15.7 12"/><path d="M13.5 17.5l-1.7 1.7a3.7 3.7 0 0 1-5.2-5.2L8.3 12"/></symbol>
+  <symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="ic-bolt" viewBox="0 0 24 24"><path d="M13 2L4 13h6l-1 9 9-11h-6z"/></symbol>
+  <symbol id="ic-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></symbol>
+</svg>
+
+<main class="stage" role="region" aria-label="Apresentação SGPE">
+<div class="deck" id="deck">
+
+  <!-- 1 · Abertura -->
+  <section class="slide" aria-label="Abertura">
+    <div class="brand-mark">
+      <div class="brand-logo">S</div>
+      <div class="brand-name">SGPE<span>Soluções Computacionais · 1º semestre</span></div>
+    </div>
+    <div class="eyebrow">Pitch acadêmico-profissional</div>
+    <h1 class="title">Gestão clara,<br><span class="gradient">acesso correto.</span></h1>
+    <p class="lead mt">Sistema de Gestão de Projetos e Equipes — uma aplicação desktop Java MVC com persistência SQLite, testes automatizados e controle de acesso por perfil.</p>
+    <div class="callout mt" style="max-width:78cqw">Como coordenar projetos, equipes e tarefas <strong>garantindo que cada pessoa veja só o que lhe compete</strong> sem depender de um framework pesado?</div>
+    <div class="chips mt">
+      <span class="chip accent">Java 21</span>
+      <span class="chip">Swing</span>
+      <span class="chip">SQLite</span>
+      <span class="chip">MVC</span>
+      <span class="chip">JUnit 5</span>
+    </div>
+  </section>
+
+  <!-- 2 · Contexto -->
+  <section class="slide" aria-label="Contexto">
+    <div class="eyebrow">Contexto</div>
+    <h2 class="title">O cenário do projeto</h2>
+    <p class="lead">Gerir projetos é coordenar pessoas, prazos e responsabilidades ao mesmo tempo.</p>
+    <div class="points mt">
+      <div class="point r"><span class="dot b">→</span> Times crescem e as tarefas se multiplicam rapidamente.</div>
+      <div class="point r"><span class="dot b">→</span> Cada papel precisa enxergar apenas o que lhe cabe.</div>
+      <div class="point r"><span class="dot b">→</span> Organização e controle viram requisito, não luxo.</div>
+    </div>
+  </section>
+
+  <!-- 3 · Problema -->
+  <section class="slide" aria-label="Problema">
+    <div class="eyebrow">Problema</div>
+    <h2 class="title">O problema a resolver</h2>
+    <div class="grid g-2 mt">
+      <div class="card r"><h3><svg class="ic"><use href="#ic-folder"/></svg> Dados dispersos</h3><p>Informação espalhada em planilhas e anotações soltas.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-task"/></svg> Sem rastreabilidade</h3><p>Responsabilidades difusas e tarefas sem dono claro.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-shield"/></svg> Sem controle de acesso</h3><p>Todos veem tudo, sem limite por perfil.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-chart"/></svg> Desempenho invisível</h3><p>Progresso do projeto difícil de medir e enxergar.</p></div>
+    </div>
+    <div class="callout warn r mt"><strong>Resultado:</strong> retrabalho, ruído e decisões tomadas no escuro.</div>
+  </section>
+
+  <!-- 4 · Solução -->
+  <section class="slide" aria-label="Solução">
+    <div class="eyebrow">Solução</div>
+    <h2 class="title">A solução: SGPE</h2>
+    <div class="cols-2">
+      <div>
+        <p class="lead" style="color:var(--text)">Uma aplicação desktop Java que <span class="gradient" style="font-weight:700">centraliza tudo</span> num só lugar.</p>
+        <div class="points mt">
+          <div class="point r"><span class="dot">✓</span> Cadastro unificado de usuários, projetos, equipes e tarefas.</div>
+          <div class="point r"><span class="dot">✓</span> Acesso por perfil embutido no próprio fluxo de uso.</div>
+          <div class="point r"><span class="dot">✓</span> Roda local, sem servidor nem framework pesado.</div>
+        </div>
+      </div>
+      <div class="card r">
+        <div class="tagline">Em uma frase</div>
+        <p style="font-size:2.4cqh;color:var(--text);line-height:1.4">Software real, organizado por responsabilidades — não um protótipo descartável.</p>
+        <div class="chips mt">
+          <span class="chip accent">Centralizado</span>
+          <span class="chip accent">Seguro</span>
+          <span class="chip accent">Testado</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · Perfis -->
+  <section class="slide" aria-label="Usuários e perfis">
+    <div class="eyebrow">Usuários e perfis</div>
+    <h2 class="title">Perfis com responsabilidades distintas</h2>
+    <div class="grid g-3 mt">
+      <div class="card r">
+        <div class="ic-badge"><svg class="ic"><use href="#ic-shield"/></svg></div>
+        <h3>Administrador</h3>
+        <p>Acesso amplo à gestão de todo o sistema, incluindo usuários.</p>
+      </div>
+      <div class="card r">
+        <div class="ic-badge"><svg class="ic"><use href="#ic-folder"/></svg></div>
+        <h3>Gerente</h3>
+        <p>Acompanha e mantém projetos, equipes e tarefas.</p>
+      </div>
+      <div class="card r">
+        <div class="ic-badge"><svg class="ic"><use href="#ic-users"/></svg></div>
+        <h3>Colaborador</h3>
+        <p>Vê apenas as equipes em que participa, em modo leitura.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · Funcionalidades -->
+  <section class="slide" aria-label="Funcionalidades principais">
+    <div class="eyebrow">Funcionalidades</div>
+    <h2 class="title">Funcionalidades que conectam o fluxo</h2>
+    <div class="grid g-2 mt">
+      <div class="card r"><h3><svg class="ic"><use href="#ic-task"/></svg> Cadastros</h3><p>CRUD completo de usuários, projetos, equipes e tarefas.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-link"/></svg> Vínculos</h3><p>Equipes ligadas a projetos; usuários ligados a equipes.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-filter"/></svg> Consulta</h3><p>Filtros por nome, status, período e equipe.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-chart"/></svg> Relatórios</h3><p>Percentual de conclusão, contagens e responsáveis.</p></div>
+    </div>
+  </section>
+
+  <!-- 7 · Como funciona -->
+  <section class="slide" aria-label="Como funciona">
+    <div class="eyebrow">Como funciona</div>
+    <h2 class="title">Da tela ao banco, em camadas</h2>
+    <p class="lead">Cada camada tem uma responsabilidade única e bem definida.</p>
+    <div class="flow mt">
+      <div class="node r"><div class="ic-badge"><svg class="ic"><use href="#ic-screen"/></svg></div><h4>View</h4><span>Telas Swing</span></div>
+      <div class="arrow r"><svg class="ic"><use href="#ic-arrow"/></svg></div>
+      <div class="node r"><div class="ic-badge"><svg class="ic"><use href="#ic-cog"/></svg></div><h4>Controller</h4><span>Regras de negócio</span></div>
+      <div class="arrow r"><svg class="ic"><use href="#ic-arrow"/></svg></div>
+      <div class="node r"><div class="ic-badge"><svg class="ic"><use href="#ic-layers"/></svg></div><h4>DAO</h4><span>Acesso a dados (JDBC)</span></div>
+      <div class="arrow r"><svg class="ic"><use href="#ic-arrow"/></svg></div>
+      <div class="node r"><div class="ic-badge"><svg class="ic"><use href="#ic-db"/></svg></div><h4>SQLite</h4><span>Persistência local</span></div>
+    </div>
+  </section>
+
+  <!-- 8 · Arquitetura -->
+  <section class="slide" aria-label="Arquitetura">
+    <div class="eyebrow">Arquitetura</div>
+    <h2 class="title">Arquitetura simples e testável</h2>
+    <div class="cols-2">
+      <div>
+        <p class="lead" style="font-size:2.2cqh">MVC clássico organizado em 7 pacotes, com injeção de dependências manual no <span style="color:var(--accent-2)">Main</span>.</p>
+        <div class="chips mt r">
+          <span class="chip">view</span><span class="chip">controller</span><span class="chip">dao</span>
+          <span class="chip">model</span><span class="chip">security</span><span class="chip">database</span><span class="chip">config</span>
+        </div>
+      </div>
+      <div class="grid g-3 r">
+        <div class="card center"><div class="stat"><div class="num gradient tnum">6</div><div class="lbl">controllers</div></div></div>
+        <div class="card center"><div class="stat"><div class="num gradient tnum">7</div><div class="lbl">DAOs</div></div></div>
+        <div class="card center"><div class="stat"><div class="num gradient tnum">9</div><div class="lbl">telas Swing</div></div></div>
+      </div>
+    </div>
+    <div class="foot"><span class="src">Fonte:</span> <span class="source-tag">README.md</span></div>
+  </section>
+
+  <!-- 9 · Dados e persistência -->
+  <section class="slide" aria-label="Dados e persistência">
+    <div class="eyebrow">Dados e persistência</div>
+    <h2 class="title">Dados persistidos com SQLite</h2>
+    <div class="cols-2">
+      <div>
+        <div class="grid g-3">
+          <div class="card center r"><div class="stat"><div class="num gradient tnum">6</div><div class="lbl">tabelas</div></div></div>
+          <div class="card center r"><div class="stat"><div class="num gradient tnum">4</div><div class="lbl">entidades</div></div></div>
+          <div class="card center r"><div class="stat"><div class="num gradient tnum">2</div><div class="lbl">junções M:N</div></div></div>
+        </div>
+        <div class="points mt">
+          <div class="point r"><span class="dot">✓</span> Chaves estrangeiras habilitadas por conexão.</div>
+          <div class="point r"><span class="dot">✓</span> Schema idempotente aplicado na inicialização.</div>
+        </div>
+      </div>
+      <div class="card r">
+        <div class="tagline">Modelo relacional</div>
+        <div class="chips">
+          <span class="chip accent">usuarios</span><span class="chip accent">projetos</span>
+          <span class="chip accent">equipes</span><span class="chip accent">tarefas</span>
+        </div>
+        <div class="chips mt"><span class="chip"><svg class="ic"><use href="#ic-link"/></svg> equipe_usuario</span><span class="chip"><svg class="ic"><use href="#ic-link"/></svg> projeto_equipe</span></div>
+      </div>
+    </div>
+    <div class="foot"><span class="src">Fonte:</span> <span class="source-tag">src/main/resources/db/schema.sql</span></div>
+  </section>
+
+  <!-- 10 · Segurança -->
+  <section class="slide" aria-label="Segurança">
+    <div class="eyebrow">Segurança</div>
+    <h2 class="title">RBAC aplicado na prática</h2>
+    <div class="cols-2">
+      <div class="card r" style="padding-top:1.6cqh">
+        <table class="matrix">
+          <thead><tr><th>Recurso</th><th>Admin</th><th>Gerente</th><th>Colab.</th></tr></thead>
+          <tbody>
+            <tr><td>Usuários</td><td><span class="ok">✓</span></td><td><span class="no">—</span></td><td><span class="no">—</span></td></tr>
+            <tr><td>Projetos</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="no">—</span></td></tr>
+            <tr><td>Tarefas</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="part">◑</span></td></tr>
+            <tr><td>Equipes</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="no">—</span></td></tr>
+            <tr><td>Consultar</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="part">◑</span></td></tr>
+            <tr><td>Relatório</td><td><span class="ok">✓</span></td><td><span class="ok">✓</span></td><td><span class="part">◑</span></td></tr>
+          </tbody>
+        </table>
+        <div class="foot" style="padding-top:1.4cqh"><span class="part">◑</span><span class="src">escopo / leitura do colaborador</span></div>
+      </div>
+      <div>
+        <div class="callout r"><strong>Escopo do colaborador:</strong> vê somente os dados das equipes de que participa.</div>
+        <div class="callout r mt"><strong>Defesa em profundidade:</strong> a tela esconde a ação <em>e</em> o acesso é revalidado ao abrir o recurso.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · Qualidade e testes -->
+  <section class="slide center" aria-label="Qualidade e testes" style="text-align:center;align-items:center">
+    <div class="eyebrow" style="justify-content:center">Qualidade e testes</div>
+    <div class="hero-num gradient tnum">131</div>
+    <p class="lead" style="margin-top:1cqh">testes automatizados — <strong style="color:var(--success)">100% verdes</strong></p>
+    <div class="grid g-4 mt r" style="width:84cqw">
+      <div class="card center"><div class="stat"><div class="num tnum" style="color:var(--success);font-size:5.5cqh">0</div><div class="lbl">falhas</div></div></div>
+      <div class="card center"><div class="stat"><div class="num tnum" style="color:var(--success);font-size:5.5cqh">0</div><div class="lbl">erros</div></div></div>
+      <div class="card center"><div class="stat"><div class="num tnum" style="color:var(--success);font-size:5.5cqh">0</div><div class="lbl">pulados</div></div></div>
+      <div class="card center"><div class="stat"><div class="num gradient tnum" style="font-size:5.5cqh">18</div><div class="lbl">classes de teste</div></div></div>
+    </div>
+    <p class="lead r mt" style="font-size:2cqh">Cobertura nas camadas críticas: controllers, DAOs, segurança e utilitários.</p>
+    <div class="foot" style="justify-content:center"><span class="src">Fonte:</span> <span class="source-tag">mvn test</span></div>
+  </section>
+
+  <!-- 12 · Resultados -->
+  <section class="slide" aria-label="Resultados">
+    <div class="eyebrow">Resultados</div>
+    <h2 class="title">Resultados concretos</h2>
+    <div class="grid g-3 mt">
+      <div class="card r"><h3><svg class="ic"><use href="#ic-screen"/></svg> Funcional</h3><p>Fluxo completo de uso, do login ao relatório.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-layers"/></svg> Em camadas</h3><p>Responsabilidades separadas e fáceis de manter.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-db"/></svg> Persistência real</h3><p>Dados em SQLite com integridade referencial.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-task"/></svg> Testado</h3><p>131 testes verdes como rede de segurança.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-shield"/></svg> Acesso por perfil</h3><p>RBAC com escopo e dupla validação.</p></div>
+      <div class="card r"><h3><svg class="ic"><use href="#ic-bolt"/></svg> Executável</h3><p>Fat jar único, roda com <code>java -jar</code>.</p></div>
+    </div>
+    <div class="callout r mt"><strong>Em síntese:</strong> um sistema real, testável e executável, com arquitetura clara e coerente com o problema.</div>
+  </section>
+
+  <!-- 13 · Limitações e evolução -->
+  <section class="slide" aria-label="Limitações e evolução">
+    <div class="eyebrow">Limitações e evolução</div>
+    <h2 class="title">Limitações viraram roadmap</h2>
+    <p class="lead" style="font-size:2.05cqh">Decisões conscientes de escopo acadêmico — e o próximo passo de cada uma.</p>
+    <div class="points mt" style="gap:1.7cqh">
+      <div class="pair r"><div class="now"><span class="mini">Hoje</span>Senha em texto simples</div><span class="arrow"><svg class="ic"><use href="#ic-arrow"/></svg></span><div class="next"><span class="mini">Evolução</span>Hash seguro de senha</div></div>
+      <div class="pair r"><div class="now"><span class="mini">Hoje</span>Status como texto livre</div><span class="arrow"><svg class="ic"><use href="#ic-arrow"/></svg></span><div class="next"><span class="mini">Evolução</span>Transições impostas pelo domínio</div></div>
+      <div class="pair r"><div class="now"><span class="mini">Hoje</span>Aplicação desktop local</div><span class="arrow"><svg class="ic"><use href="#ic-arrow"/></svg></span><div class="next"><span class="mini">Evolução</span>Versão client-server ou web</div></div>
+    </div>
+    <div class="chips mt r"><span class="chip">Exportar relatórios</span><span class="chip">Gráficos</span><span class="chip">Auditoria de ações</span></div>
+  </section>
+
+  <!-- 14 · Demo e Q&A -->
+  <section class="slide" aria-label="Demo e perguntas">
+    <div class="eyebrow">Conclusão</div>
+    <h2 class="title">Demo e perguntas</h2>
+    <div class="cols-2">
+      <div>
+        <div class="callout"><strong>RBAC ao vivo:</strong> vou logar como Administrador, Gerente e Colaborador e mostrar a mesma tela mudando conforme o perfil.</div>
+        <pre class="code r mt"><span class="c"># empacotar e executar</span>
+mvn clean package
+java -jar target/sistema-gestao-projetos-equipes-1.0.0.jar
+
+<span class="c"># login inicial</span>
+usuário: <span class="g">admin</span>   senha: <span class="g">admin</span></pre>
+      </div>
+      <div>
+        <div class="tagline" style="color:var(--accent)">Perguntas antecipadas</div>
+        <div class="points" style="gap:1.4cqh">
+          <div class="point r"><span class="dot b">?</span> <b>Por que Swing/SQLite?</b> Nativos, zero infraestrutura, foco no domínio.</div>
+          <div class="point r"><span class="dot b">?</span> <b>Por que sem framework?</b> Evidencia domínio de POO e MVC na raiz.</div>
+          <div class="point r"><span class="dot b">?</span> <b>Como validaram?</b> 131 testes JUnit nas camadas críticas.</div>
+        </div>
+        <div class="quote r mt" style="font-size:2.6cqh">Obrigado. <span class="gradient">Perguntas?</span></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<div class="progress"><div class="progress-bar" id="bar"></div></div>
+<div class="counter"><b id="cur">01</b> / <span id="total">14</span></div>
+<nav class="nav" aria-label="Navegação de slides">
+  <button id="prev" title="Slide anterior (←)">‹</button>
+  <button id="next" title="Próximo (→ ou espaço)">›</button>
+</nav>
+<div class="hint" id="hint"><span class="kbd">←</span><span class="kbd">→</span> navegar · <span class="kbd">espaço</span> revelar · <span class="kbd">F</span> tela cheia</div>
+
+<script>
+(function(){
+  "use strict";
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var bar = document.getElementById('bar');
+  var curEl = document.getElementById('cur');
+  var totalEl = document.getElementById('total');
+  var hint = document.getElementById('hint');
+  var cur = 0;
+
+  totalEl.textContent = pad(slides.length);
+
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function reveals(i){ return Array.prototype.slice.call(slides[i].querySelectorAll('.r')); }
+  function shownCount(i){ return reveals(i).filter(function(e){ return e.classList.contains('show'); }).length; }
+  function showAll(i){ reveals(i).forEach(function(e){ e.classList.add('show'); }); }
+  function hideAll(i){ reveals(i).forEach(function(e){ e.classList.remove('show'); }); }
+
+  function render(){
+    slides.forEach(function(s, i){
+      var on = i === cur;
+      s.classList.toggle('active', on);
+      s.setAttribute('aria-hidden', on ? 'false' : 'true');
+    });
+    bar.style.width = ((cur + 1) / slides.length * 100) + '%';
+    curEl.textContent = pad(cur + 1);
+  }
+
+  function goTo(i){
+    if (i < 0 || i >= slides.length) return;
+    cur = i;
+    showAll(cur);
+    render();
+  }
+
+  function next(){
+    var items = reveals(cur);
+    var shown = shownCount(cur);
+    if (shown < items.length){ items[shown].classList.add('show'); return; }
+    if (cur < slides.length - 1){ cur++; hideAll(cur); render(); }
+  }
+
+  function prev(){
+    if (cur > 0){ cur--; showAll(cur); render(); }
+  }
+
+  document.addEventListener('keydown', function(e){
+    switch (e.key){
+      case 'ArrowRight': case ' ': case 'PageDown': e.preventDefault(); next(); break;
+      case 'ArrowLeft': case 'PageUp': e.preventDefault(); prev(); break;
+      case 'Home': e.preventDefault(); goTo(0); break;
+      case 'End': e.preventDefault(); goTo(slides.length - 1); break;
+      case 'f': case 'F':
+        if (!document.fullscreenElement){ document.documentElement.requestFullscreen(); }
+        else { document.exitFullscreen(); }
+        break;
+    }
+  });
+
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+
+  // esconde a dica após alguns segundos
+  setTimeout(function(){ hint.style.opacity = '0'; }, 4200);
+
+  // inicia com reveals do primeiro slide ocultos
+  hideAll(0);
+  render();
+})();
+</script>
+</body>
+</html>
